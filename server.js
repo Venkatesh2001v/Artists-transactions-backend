@@ -8,12 +8,12 @@ const app = express();
 app.use(bodyParser.json());
 app.use(cors());
 
-const databasePath = path.join(__dirname, 'transactions.db');
-let database = new sqlite3.Database(databasePath, async (err) => {
+const dbPath = path.join(__dirname, 'transactions.db');
+let db = new sqlite3.Database(dbPath, async (err) => {
     if (err) {
         console.error('Error opening database', err.message);
     } else {
-        database.run(`CREATE TABLE IF NOT EXISTS transactions (
+        db.run(`CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             type TEXT NOT NULL,
             amount REAL NOT NULL,
@@ -30,7 +30,7 @@ let database = new sqlite3.Database(databasePath, async (err) => {
 
 const calculateRunningBalance = async () => {
     return new Promise((resolve, reject) => {
-        database.all('SELECT * FROM transactions ORDER BY date, id', (err, rows) => {
+        db.all('SELECT * FROM transactions ORDER BY date, id', (err, rows) => {
             if (err) {
                 return reject(err);
             }
@@ -48,9 +48,9 @@ const calculateRunningBalance = async () => {
 
 const updateBalances = async () => {
     const transactions = await calculateRunningBalance();
-    database.serialize(() => {
+    db.serialize(() => {
         transactions.forEach(transaction => {
-            database.run(`UPDATE transactions SET running_balance = ? WHERE id = ?`, [transaction.running_balance, transaction.id], (err) => {
+            db.run(`UPDATE transactions SET running_balance = ? WHERE id = ?`, [transaction.running_balance, transaction.id], (err) => {
                 if (err) {
                     console.error('Error updating balance', err.message);
                 }
@@ -59,8 +59,13 @@ const updateBalances = async () => {
     });
 };
 
+// Route to handle root path
+app.get('/', (req, res) => {
+    res.send('Welcome to the Transactions API');
+});
+
 app.get('/transactions', (req, res) => {
-    database.all('SELECT * FROM transactions ORDER BY id asc', [], (err, rows) => {
+    db.all('SELECT * FROM transactions ORDER BY id asc', [], (err, rows) => {
         if (err) {
             res.status(500).send(err.message);
         } else {
@@ -75,8 +80,8 @@ app.post('/transactions', async (req, res) => {
         return res.status(400).send('type, amount, and date are required');
     }
     const running_balance = await calculateRunningBalance();
-    database.run(`INSERT INTO transactions (type, amount, description, date, running_balance) VALUES (?, ?, ?, ?, ?)`,
-        [type, amount, description, date, running_balance], function(err) {
+    db.run(`INSERT INTO transactions (type, amount, description, date, running_balance) VALUES (?, ?, ?, ?, ?)`,
+        [type, amount, description, date, running_balance], function (err) {
             if (err) {
                 res.status(500).send(err.message);
             } else {
@@ -93,8 +98,8 @@ app.put('/transactions/:id', async (req, res) => {
         return res.status(400).send('type, amount, and date are required');
     }
 
-    database.run(`UPDATE transactions SET type = ?, amount = ?, description = ?, date = ? WHERE id = ?`,
-        [type, amount, description, date, id], function(err) {
+    db.run(`UPDATE transactions SET type = ?, amount = ?, description = ?, date = ? WHERE id = ?`,
+        [type, amount, description, date, id], function (err) {
             if (err) {
                 res.status(500).send(err.message);
             } else {
@@ -106,7 +111,7 @@ app.put('/transactions/:id', async (req, res) => {
 
 app.delete('/transactions/:id', (req, res) => {
     const { id } = req.params;
-    database.run(`DELETE FROM transactions WHERE id = ?`, [id], function(err) {
+    db.run(`DELETE FROM transactions WHERE id = ?`, [id], function (err) {
         if (err) {
             res.status(500).send(err.message);
         } else {
